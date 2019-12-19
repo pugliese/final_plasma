@@ -36,6 +36,15 @@ double set_p(struct Particles *parts, double T){
   return res/parts->n;
 }
 
+double set_two_streams(struct Particles *parts, double v){
+  int N = parts->n;
+  for(int i = 0; i < N; i++){
+    parts->v[i] = v*(2*(i % 2 == 0) - 1);
+  }
+  parts->kinetic = 0.5*v*v;
+  return v*v;
+}
+
 double set_p_square(struct Particles *parts, double T){
   double sigma = sqrt(3*T/parts->mass);
   for(int k = 0; k < parts->n; k++){

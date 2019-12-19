@@ -1,12 +1,31 @@
-import sys
+import argparse
 import numpy as np
 import matplotlib.pylab as plt
+#import matplotlib.animation as animation
 import scipy.optimize as sco
 
-if sys.argv[1] == "video":
-  k = int(sys.argv[2])
-  _dt = float(sys.argv[3])
+parser = argparse.ArgumentParser(description='Analysis script for cold plasma oscilations')
 
+group = parser.add_mutually_exclusive_group()
+group.add_argument('-d', '--dispersion', action='store_true',
+                    help='calculate the dispersion relation for k in [1, 200]')
+group.add_argument('-v', '--video', action='store_true',
+                    help='make video for given modes')
+group.add_argument('-s', '--snapshots', type=int, default=0,
+                    help='show n time-equidistant density-potential snapshots of given mode')
+group.add_argument('-k', '--kinetic', action='store_true',
+                    help='show kinetic energy oscilations')
+parser.add_argument('--mode', type=int, default=1,
+                    help='modes to analyze (default: 1)')
+parser.add_argument('--dt', type=float, default=0.001,
+                    help='filename of loaded model (default: 0.001)')
+
+args = parser.parse_args()
+
+_dt = args.dt
+k = args.mode
+
+if args.video:
   def video(vector, folder, dt, prefix=""):
     pot_inf = np.min(vector[:, 1:])
     pot_sup = np.max(vector[:, 1:])
@@ -24,13 +43,11 @@ if sys.argv[1] == "video":
   video(data, "data/perturbacion/pot_vid/", _dt, "k="+str(k)+"_")
   data = np.loadtxt("data/perturbacion/densidad_k=%d.txt" %k)
   video(data, "data/perturbacion/dens_vid/", _dt, "k="+str(k)+"_")
-elif sys.argv[1] == "freqs":
+elif args.dispersion:
   def calculate_frequency_fft(signal, dt):
-    N = len(signal)
-    signal_fft = np.abs(np.real(np.fft.fft(signal)))[0:(N+1)//2]
-    F = np.fft.fftfreq(N, dt)[0:(N+1)//2]
-    #plt.plot(F, signal_fft, ".--")
-    #plt.show()
+    Nn = len(signal)
+    signal_fft = np.abs(np.real(np.fft.fft(signal)))[0:(Nn+1)//2]
+    F = np.fft.fftfreq(Nn, dt)[0:(Nn+1)//2]
     max_idx = np.argmax(signal_fft[1:])
     return F[max_idx+1]
 
@@ -45,7 +62,6 @@ elif sys.argv[1] == "freqs":
     paramms, _ = sco.curve_fit(func_fit, Ts, signal, p0 = [Ao, fo, t0o, Bo], maxfev=10000)
     return paramms[1]
 
-  _dt = float(sys.argv[2])
   file_format = "data/perturbacion/cinetica_k=%d.txt"
   k_max = 200
   ks = np.arange(1, k_max +1)
@@ -56,60 +72,38 @@ elif sys.argv[1] == "freqs":
     amps[k-1] = np.max(ekin) - np.min(ekin)
     freqs[k-1] = calculate_frequency_fit(ekin, _dt)
   plt.figure()
-  plt.plot(ks, np.pi*freqs, "b.--")
-  plt.plot(ks, np.sinc(.5*np.pi*ks/1024)**2, "g-")
-  plt.xlabel(r"Numero de onda ($k L/2\pi$)")
+  plt.plot(ks, np.pi*freqs, "b-")
+  #plt.plot(ks, np.sinc(.5*np.pi*ks/1024)**2, "g-")
+  plt.xlabel(r"Numero de onda ($k$)")
   plt.ylabel(r"$\omega$ [$\tau^{-1}$]")
   plt.plot(ks, ks/ks, "k--")
-  #plt.plot(ks, 0.5*ks/ks, "k--")
+  plt.grid()
+  plt.yticks(np.arange(0.8, 1.01, 0.05))
   plt.xlim(0, k_max)
-  plt.ylim(np.min(freqs)*3, np.max(freqs)*3.2)
+  plt.ylim(0.8, np.max(freqs)*3.2)
   plt.show()
-elif sys.argv[1] == "comp":
-  field = np.loadtxt("data/perturbacion/campo_final_k=1.txt")[0, 1:]
-  pot = np.loadtxt("data/perturbacion/potencial_final_k=1.txt")[0, 1:]
-  dens = np.loadtxt("data/perturbacion/densidad_final_k=1.txt")[0, 1:]
-  M = len(field)
-  plt.figure(1)
-  plt.plot(np.linspace(0,1, M), field)
-  plt.title("Campo")
-  plt.figure(2)
-  plt.plot(np.linspace(0,1, M), pot)
-  plt.title("Potencial")
-  plt.figure(3)
-  plt.plot(np.linspace(0,1, M), dens, "b-")
-  dens_lap = (pot[:-2]+pot[2:]-2*pot[1:-1])/64
-  #plt.plot(np.linspace(0,1, M)[1:-1], -dens_lap, "r-")
-  plt.title("Densidad")
-elif sys.argv[1] == "initial":
-  potential = np.loadtxt("data/initial/potencial.txt")
-  density = np.loadtxt("data/initial/densidad.txt")[:, 1:]
-  density_fft_imag_norm = np.loadtxt("data/initial/densidad_fft_imag_norm.txt")[:, 1:]
-  density_fft_imag = np.loadtxt("data/initial/densidad_fft_imag.txt")[:, 1:]
-  ks = potential[:, 0] + 1
-  potential = potential[:, 1:]
-
-  amps_pot = np.max(potential, axis=1) - np.min(potential, axis=1)
-  params = np.polyfit(np.log(ks[50:]), np.log(amps_pot[50:]), 1)
-  amps_pot_fit = np.exp(np.polyval(params, np.log(ks)))
-  amps_dens = np.max(density, axis=1) - np.min(density, axis=1)
-  params = np.polyfit(ks[50:], amps_dens[50:]/ks[50:], 0)
-  amps_dens_fit = np.polyval(params, ks)*ks
-
-  plt.figure()
-  plt.loglog(ks, amps_pot, "b.")
-  plt.loglog(ks, amps_pot_fit*(amps_pot_fit>0), "b-")
-  plt.figure()
-  plt.loglog(ks, amps_dens, "g.")
-  plt.loglog(ks, amps_dens_fit, "g-")
-
-  #plt.figure()
-  for k in range(50):
-    #plt.plot(density_fft_imag_norm[k, :], ".-")
-    print(k, ")", np.min(density_fft_imag_norm[k, :]), np.min(density_fft_imag[k, :]), np.max(density_fft_imag_norm[k, :]), np.max(density_fft_imag[k, :]))
-    #plt.plot(density_fft_imag[k, :], ".-")
+elif args.kinetic:
+  energy = np.loadtxt("data/perturbacion/cinetica_k=%d.txt" %k)[:, 0]
+  time = np.arange(len(energy))*_dt
+  plt.plot(time, energy, "r-")
+  plt.plot([np.pi, np.pi], [0, np.max(energy)*0.45], "k--")
+  plt.plot([np.pi, np.pi], [np.max(energy)*0.55, np.max(energy)], "k--")
+  plt.text(np.pi, np.max(energy)*0.5, r"$\pi$", fontsize=18, ha = "center", va = "center")
+  plt.plot([2*np.pi, 2*np.pi], [0, np.max(energy)*0.45], "k--")
+  plt.plot([2*np.pi, 2*np.pi], [np.max(energy)*0.55, np.max(energy)], "k--")
+  plt.text(2*np.pi, np.max(energy)*0.5, r"$2\pi$", fontsize=18, ha = "center", va = "center")
+  plt.plot([3*np.pi, 3*np.pi], [0, np.max(energy)*0.45], "k--")
+  plt.plot([3*np.pi, 3*np.pi], [np.max(energy)*0.55, np.max(energy)], "k--")
+  plt.text(3*np.pi, np.max(energy)*0.5, r"$3\pi$", fontsize=18, ha = "center", va = "center")
+  plt.xlim(0, 10)
+  plt.ylim(0, np.max(energy))
+  plt.xlabel(r"Tiempo [$\tau$]")
+  plt.ylabel(r"$E_{kin}$ [$ml^2\tau^2$]")
   plt.show()
-elif sys.argv[1] == "point_charge":
-  ekin = np.loadtxt("data/point_charge/cinetica.txt")
-  epot = ekin[:, 1]
-  ekin = ekin[:, 0]
+elif args.snapshots > 0:
+  ekin = np.loadtxt("data/perturbacion/cinetica_k=%d.txt" %k)[:, 0]
+  f = calculate_frequency_fit(ekin, _dt)
+  T = np.pi/f
+  ts = np.lisnpace(0, T, args.snapshots)
+  potential = np.loadtxt("data/perturbacion/potencial_k=%d.txt" %k)
+  density = np.loadtxt("data/perturbacion/densidad_k=%d.txt" %k)

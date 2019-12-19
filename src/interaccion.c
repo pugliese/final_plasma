@@ -64,7 +64,7 @@ int calculate_field(struct Interaccion *electric){
 }
 
 double forces(struct Particles *parts, struct Interaccion *electric){
-  double pot = 0, dx = electric->dx, f, E, V, P;
+  double pot = 0, dx = electric->dx, f, E, V;
   int i, M = electric->M, m;
   for (i = 0; i < parts->n; i++){
     f = parts->x[i]/dx;
