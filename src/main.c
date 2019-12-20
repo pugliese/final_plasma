@@ -29,12 +29,10 @@ int main(int argc, char *argv[]){
   if(opcion == '1'){
     char filename_density[255];
     char filename_potential[255];
-    sprintf(filename, "data/point_charge/cinetica.txt");
+    char opcion_2 = 'p';
     double l = 1, To = 0;
     if(argc > 2)  sscanf(argv[2], "%lf", &To);
-    sprintf(filename_potential, "data/point_charge/potencial_medio_T=%.1f.txt", To);
-    sprintf(filename_density, "data/point_charge/densidad_medio_T=%.1f.txt", To);
-    FILE *fp = fopen(filename, "w");
+    if(argc > 3)  sscanf(argv[3], "%c\n", &opcion_2);
 
     thermostat.T = To;
 
@@ -45,13 +43,6 @@ int main(int argc, char *argv[]){
 
     int M = parts.n;
     double L = l*parts.n, Q = 10;
-
-    double* mean_potential = (double *) malloc(M*sizeof(double));
-    double* mean_density = (double *) malloc(M*sizeof(double));
-    for(int m = 0; m < M; m++){
-      mean_potential[m] = 0;
-      mean_density[m] = 0;
-    }
 
     create_neutralizing_background(&electric, parts.charge*parts.n + Q, M, L);
     electric.background[M/2] += Q/electric.dx;
@@ -65,31 +56,52 @@ int main(int argc, char *argv[]){
     parts.energy_pot = forces(&parts, &electric)/parts.n;
 
     double h = 0.001;
-    int N_steps = 10001000, t, N_skip = 1000;
     int segs = time(NULL);
-    for(t = 0; t < N_steps; t++){
-      //printf("Progreso: %d%%\r", (100*t)/N_steps);
-      fflush(stdout);
-      /*
-      if(t % 50 == 0){
-        save_vector(filename_density, electric.density, electric.M, t);
-        save_vector(filename_potential, electric.potential, electric.M, t);
+    if(opcion_2 == 'p'){
+      sprintf(filename_potential, "data/point_charge/potencial_medio_T=%.1f.txt", To);
+      sprintf(filename_density, "data/point_charge/densidad_medio_T=%.1f.txt", To);
+      double* mean_potential = (double *) malloc(M*sizeof(double));
+      double* mean_density = (double *) malloc(M*sizeof(double));
+      for(int m = 0; m < M; m++){
+        mean_potential[m] = 0;
+        mean_density[m] = 0;
       }
-      fprintf(fp, "%f %f\n", parts.kinetic, parts.energy_pot);
-      */
-      velocity_verlet_NVT(&parts, &electric, h, &thermostat);
-      if (t >= N_skip){
-        for(int m = 0; m < M; m++){
-          mean_potential[m] += electric.potential[m]/(N_steps-N_skip);
-          mean_density[m] += electric.density[m]/(N_steps-N_skip);
+      int N_steps = 10001000, t, N_skip = 1000;
+      for(t = 0; t < N_steps; t++){
+        //printf("Progreso: %d%%\r", (100*t)/N_steps);
+        fflush(stdout);
+        velocity_verlet_NVT(&parts, &electric, h, &thermostat);
+        if (t >= N_skip){
+          for(int m = 0; m < M; m++){
+            mean_potential[m] += electric.potential[m]/(N_steps-N_skip);
+            mean_density[m] += electric.density[m]/(N_steps-N_skip);
+          }
         }
       }
+      save_vector(filename_density, mean_density, electric.M, 0);
+      save_vector(filename_potential, mean_potential, electric.M, 0);
+      free(mean_density);
+      free(mean_potential);
+    }else{
+      sprintf(filename, "data/point_charge/cinetica_T=%.1f.txt", To);
+      FILE *fp = fopen(filename, "w");
+      sprintf(filename_potential, "data/point_charge/potencial_T=%.1f.txt", To);
+      sprintf(filename_density, "data/point_charge/densidad_T=%.1f.txt", To);
+      int N_steps = 200000, t;
+      for(t = 0; t < N_steps; t++){
+        printf("Progreso: %d%%\r", (100*t)/N_steps);
+        fflush(stdout);
+        if(t % 20 == 0){
+          save_vector(filename_density, electric.density, electric.M, t);
+          save_vector(filename_potential, electric.potential, electric.M, t);
+          fprintf(fp, "%d %f %f\n", t, parts.kinetic, parts.energy_pot);
+        }
+        velocity_verlet_NVT(&parts, &electric, h, &thermostat);
+      }
+      fclose(fp);
     }
     segs = time(NULL) - segs;
     printf("Progreso: 100%%\nTardo %dmin, %dsegs\n", segs/60, segs%60);
-    save_vector(filename_density, mean_density, electric.M, 0);
-    save_vector(filename_potential, mean_potential, electric.M, 0);
-    fclose(fp);
   }
 
   if(opcion == '2'){

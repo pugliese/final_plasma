@@ -22,8 +22,27 @@ parser.add_argument('--dt', type=float, default=0.001,
 
 args = parser.parse_args()
 
+N = 2048
 _dt = args.dt
 k = args.mode
+
+def calculate_frequency_fft(signal, dt):
+  Nn = len(signal)
+  signal_fft = np.abs(np.real(np.fft.fft(signal)))[0:(Nn+1)//2]
+  F = np.fft.fftfreq(Nn, dt)[0:(Nn+1)//2]
+  max_idx = np.argmax(signal_fft[1:])
+  return F[max_idx+1]
+
+func_fit = lambda t, A, f, t0, B: A*np.sin(2*np.pi*f*(t-t0)) + B
+
+def calculate_frequency_fit(signal, dt):
+  fo = calculate_frequency_fft(signal, dt)
+  Ao = np.max(signal)
+  Bo = Ao
+  t0o = 0
+  Ts = np.arange(len(signal))*dt
+  paramms, _ = sco.curve_fit(func_fit, Ts, signal, p0 = [Ao, fo, t0o, Bo], maxfev=10000)
+  return paramms[1]
 
 if args.video:
   def video(vector, folder, dt, prefix=""):
@@ -43,25 +62,8 @@ if args.video:
   video(data, "data/perturbacion/pot_vid/", _dt, "k="+str(k)+"_")
   data = np.loadtxt("data/perturbacion/densidad_k=%d.txt" %k)
   video(data, "data/perturbacion/dens_vid/", _dt, "k="+str(k)+"_")
+
 elif args.dispersion:
-  def calculate_frequency_fft(signal, dt):
-    Nn = len(signal)
-    signal_fft = np.abs(np.real(np.fft.fft(signal)))[0:(Nn+1)//2]
-    F = np.fft.fftfreq(Nn, dt)[0:(Nn+1)//2]
-    max_idx = np.argmax(signal_fft[1:])
-    return F[max_idx+1]
-
-  func_fit = lambda t, A, f, t0, B: A*np.sin(2*np.pi*f*(t-t0)) + B
-
-  def calculate_frequency_fit(signal, dt):
-    fo = calculate_frequency_fft(signal, dt)
-    Ao = np.max(signal)
-    Bo = Ao
-    t0o = 0
-    Ts = np.arange(len(signal))*dt
-    paramms, _ = sco.curve_fit(func_fit, Ts, signal, p0 = [Ao, fo, t0o, Bo], maxfev=10000)
-    return paramms[1]
-
   file_format = "data/perturbacion/cinetica_k=%d.txt"
   k_max = 200
   ks = np.arange(1, k_max +1)
@@ -102,8 +104,38 @@ elif args.kinetic:
   plt.show()
 elif args.snapshots > 0:
   ekin = np.loadtxt("data/perturbacion/cinetica_k=%d.txt" %k)[:, 0]
-  f = calculate_frequency_fit(ekin, _dt)
-  T = np.pi/f
-  ts = np.lisnpace(0, T, args.snapshots)
-  potential = np.loadtxt("data/perturbacion/potencial_k=%d.txt" %k)
+  T = 0.5/calculate_frequency_fit(ekin, _dt)
+
   density = np.loadtxt("data/perturbacion/densidad_k=%d.txt" %k)
+  time = density[:, 0]*_dt
+  density = density[:, 1:]
+  potential = np.loadtxt("data/perturbacion/potencial_k=%d.txt" %k)[:, 1:]
+  delta_t = time[1]-time[0]
+  steps_per_cycle = int(T/delta_t)
+  idxs = np.int32(np.linspace(0, steps_per_cycle, args.snapshots))
+  #idxs = np.arange(0, steps_per_cycle, steps_per_cycle//args.snapshots)
+
+  M = density.shape[1]
+  cells = np.arange(0, M)*N/M
+  legend = [r"t=%.2f$\tau$" %time[i] for i in idxs]
+  plt.figure()
+  plt.xlabel(r"x [$l$]")
+  plt.ylabel(r"Densidad [$l^{-1}$] (x1000)")
+  for idx in idxs:
+    plt.plot(cells, density[idx, :]*1000)
+  plt.xlim(0, N-1)
+  dens_lim = np.max(np.abs(density[idxs, :]))*1000
+  plt.ylim(-dens_lim, dens_lim)
+  plt.grid()
+  plt.legend(legend)
+
+  plt.figure()
+  plt.xlabel(r"x [$l$]")
+  plt.ylabel(r"Potencial [$V_o$]")
+  for idx in idxs:
+    plt.plot(cells, potential[idx, :])
+  plt.xlim(0, N-1)
+  pot_lim = np.max(np.abs(potential[idxs, :]))
+  plt.ylim(-pot_lim, pot_lim)
+  plt.grid()
+  plt.legend(legend)
